@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Gordo - Characterstyler</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	</head>
+
+	<body>
+
+		<script src="js/three.js"></script>
+		<script src="js/Detector.js"></script>
+		<script src="js/stats.min.js"></script>
+		<script type="text/javascript" src="http://code.jquery.com/jquery-latest.pack.js"></script>
+		<script type="text/javascript" src="farbtastic/farbtastic.js"></script>
+		<link rel="stylesheet" href="farbtastic/farbtastic.css" type="text/css" />
+		
+		<form><input type="text" id="color" name="color" value="#123456" /></form>
+		<div id="colorpicker"></div>
+		
+		<form style="position:absolute; right:0; top:0; z-index:100" >
+			<input type="text" id="nmx_username" value="Franz" />
+			<input type="submit" onclick="refreshCharacter(); return false" value="Load" />
+			<input type="submit" onclick="saveHairColor(); return false" value="Save"/>
+		</form>
+
+		<script>
+		
+			var SERVER_USERNAME = "";
+			var SERVER_PASSWORD = "";
+			var SERVER_AUTH_TOKEN = "";
+			
+			var nmx_username = $("#nmx_username").val();
+			var hairColor;
+			var beltColor;
+			
+			var SCREEN_WIDTH = window.innerWidth;
+			var SCREEN_HEIGHT = window.innerHeight;
+			var FLOOR = -250;
+
+			var container,stats;
+
+			var camera, scene;
+
+			var zmesh, geometry;
+			
+			var webglRenderer;
+
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+
+			init();
+			animate();
+
+			function init() {
+
+				container = document.createElement( 'div' );
+				container.style.position = "absolute";
+				container.style.top = "0";
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 75, SCREEN_WIDTH / SCREEN_HEIGHT, 1, 100000 );
+				camera.position.z = 500;
+
+				scene = new THREE.Scene();
+
+				// LIGHTS
+
+				var ambient = new THREE.AmbientLight( 0x221100 );
+				scene.add( ambient );
+
+				var directionalLight = new THREE.DirectionalLight( 0xffeedd );
+				directionalLight.position.set( 0, -70, 100 ).normalize();
+				scene.add( directionalLight );
+
+				// RENDERER
+
+				try {
+
+					webglRenderer = new THREE.WebGLRenderer();
+					webglRenderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
+					webglRenderer.domElement.style.position = "relative";
+
+					container.appendChild( webglRenderer.domElement );
+
+				}
+				catch (e) {
+					console.log("webgl not supported");
+				}
+				
+				// STATS
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				stats.domElement.style.zIndex = 100;
+				container.appendChild( stats.domElement );
+
+				var loader = new THREE.JSONLoader();
+				var callback = function ( geometry, materials ) { createScene( geometry, materials, 90, FLOOR, 50, 105 ) };
+
+				loader.load( "models/gordo.js", callback );
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+			
+
+			function onWindowResize() {
+
+				windowHalfX = window.innerWidth / 2;
+				windowHalfY = window.innerHeight / 2;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				webglRenderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function createScene( geometry, materials, x, y, z, b ) {
+				
+				zmesh = new THREE.Mesh( geometry, new THREE.MeshFaceMaterial( materials ) );
+
+				zmesh.position.set( x, y, z );
+				zmesh.scale.set( 3, 3, 3 );
+				refreshCharacter();
+				scene.add( zmesh );
+				
+			}
+
+			function animate() {
+			
+				requestAnimationFrame( animate );
+
+				render();
+				stats.update();
+				
+			}
+
+			function render() {
+			
+				if(zmesh){
+					zmesh.rotation.y += 0.01;
+				}
+				
+				camera.lookAt( scene.position );
+
+				webglRenderer.render( scene, camera );
+				
+			}
+
+			function refreshCharacter() {
+			
+				nmx_username = $("#nmx_username").val();
+				
+				if(nmx_username) {
+					updateHairColor(nmx_username);
+					updateBeltColor(nmx_username);
+				}		
+				
+			}
+			
+			function colorizeHair() {
+				
+				if(zmesh && $("#color")){
+					rgb = $("#color").css("background-color");
+					var rgbArray = rgb.replace(/[^\d,]/g, '').split(',');
+					rgbArray = normalizeRgbArray(rgbArray);
+					
+					//HAIR
+					zmesh['material']['materials'][13]["color"]["r"] = rgbArray[0];
+					zmesh['material']['materials'][13]["color"]["g"] = rgbArray[1];
+					zmesh['material']['materials'][13]["color"]["b"] = rgbArray[2];
+					
+					//BEARD
+					zmesh['material']['materials'][5]["color"]["r"] = rgbArray[0];
+					zmesh['material']['materials'][5]["color"]["g"] = rgbArray[1];
+					zmesh['material']['materials'][5]["color"]["b"] = rgbArray[2];
+				}
+				
+			}
+			
+			function colorizeBelt(color) {
+				color = typeof color !== 'undefined' ? color : "FF0000";
+				var rgbArray = normalizeRgbArray(hexToRgb(color));
+					
+				if(zmesh) {
+					zmesh['material']['materials'][0]["color"]["r"] = rgbArray[0];
+					zmesh['material']['materials'][0]["color"]["g"] = rgbArray[1];
+					zmesh['material']['materials'][0]["color"]["b"] = rgbArray[2];
+				}
+				
+			}
+			
+			function updateHairColor(nmx_username){		
+				$.ajax({
+				  type: "post",
+				  url: "http://dev.noomix.at/api/get_hair_color.json",
+				  username: SERVER_USERNAME,
+				  password: SERVER_PASSWORD,
+				  data: {auth_token: SERVER_AUTH_TOKEN, user:{username: nmx_username}}
+				}).done(function(data) {
+				  color = data.hair_color;				  
+				  setHairColor(color);
+				}).fail(function(e) { console.log(e.responseText + " - couldn't load hairColor"); });
+			
+			}
+			
+			function updateBeltColor(nmx_username){
+			
+				$.ajax({
+				  type: "post",
+				  url: "http://dev.noomix.at/api/get_belt_color.json",
+				  username: SERVER_USERNAME,
+				  password: SERVER_PASSWORD,
+				  data: {auth_token: SERVER_AUTH_TOKEN, user:{username: nmx_username}}
+				}).done(function(data) {
+				  colorizeBelt(data.belt_color);
+				}).fail(function(e) { console.log(e.responseText + " - couldn't load belt-color"); });
+			
+			}
+			
+			function saveHairColor() {
+			
+				if(!nmx_username) {
+					console.log("no username given");
+				};
+				
+				var color = $.farbtastic('#colorpicker').color;
+				color = color.substr(1); // remove #
+				
+				$.ajax({
+				  type: "post",
+				  url: "http://dev.noomix.at/api/save_hair_color.json",
+				  username: SERVER_USERNAME,
+				  password: SERVER_PASSWORD,
+				  data: {auth_token: SERVER_AUTH_TOKEN, user:{username: nmx_username, hairColor: color}}
+				}).done(function(data) {
+				  console.log("hairColor #" + color + " saved");
+				}).fail(function(e) { console.log("couldn't save color"); });		
+				
+			}
+			
+			function setHairColor(color) {
+			
+				color = typeof color !== 'undefined' ? color : "FF0000";
+				
+				$.farbtastic('#colorpicker').setColor("#"+color);
+				colorizeHair();
+				
+			}
+			
+			function hexToRgb(hex) {
+			
+				var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+				return result ? {
+					0: parseInt(result[1], 16),
+					1: parseInt(result[2], 16),
+					2: parseInt(result[3], 16)
+				} : null;
+				
+			}
+			
+			//map rgb to 0-1
+			function normalizeRgbArray(rgbArray) {
+				for (var i in rgbArray) {
+					rgbArray[i] /= 255;
+					rgbArray[i] = rgbArray[i].toFixed(5);
+				}
+				return rgbArray;
+			}
+					
+			//////////////////
+			// COLOR PICKER //
+			//////////////////
+			$(document).ready(function() {
+				
+				$('#colorpicker').farbtastic('#color');
+				$("#color").css('display', 'none');				
+				$("div.farbtastic").css('left','100px');
+				$("div.farbtastic").css('z-index','100');
+			
+			});
+			
+			setInterval(function() { ObserveInputValue($('#color').val()); }, 100);
+			
+			var colorPickerValue = $('#color').val();
+			
+			function ObserveInputValue(val){
+			
+				if (val != colorPickerValue) {
+					colorPickerValue = val;
+					colorizeHair();
+				}
+				
+			}
+		</script>
+	</body>
+</html>
